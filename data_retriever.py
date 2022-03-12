@@ -7,27 +7,38 @@ import os
 class DataRetriever:
 
     def __init__(self):
-        self.CLIENT_ID = "DUMMY_API_KEY"
-        self.CLIENT_SECRET = "DUMMY_API_SECRET"
-
-        self.current_path = os.path.dirname(__file__)
-        result_relative_path = "result/" + datetime.datetime.now().strftime("%Y%m%d_%H%M%S") + "/"
-        os.mkdir(result_relative_path)
-        self.abs_file_path = os.path.join(self.current_path, result_relative_path)
-
-        self.access_token = self.AccessToken(self.CLIENT_ID, self.CLIENT_SECRET, self.abs_file_path)
-        self.access_token.get_access_token()
+        self.file_saver = self.FileSaver()
+        self.access_token = self.AccessToken()
 
     class AccessToken:
-        # A singleton class that manages the Access Token required for accessing PetFinder API.
 
-        def __init__(self, client_id, client_secret, abs_file_path):
-            self.CID = client_id
-            self.CSCRT = client_secret
-            self.abs_file_path = abs_file_path
+        def __init__(self):
+            f = open('api_key_secret_pairs.json', 'r')
+            file_data = json.load(f)
+
+            oldest_api_key = ""
+            oldest_api_secret = ""
+            oldest_api_usage_time = datetime.datetime.strptime("2100-01-01 00:00:00", "%Y-%m-%d %H:%M:%S")
+            for each in file_data['key_pairs']:
+                datetime.datetime.strptime(each['last_usage_time'], "%Y-%m-%d %H:%M:%S")
+                if datetime.datetime.strptime(each['last_usage_time'], "%Y-%m-%d %H:%M:%S") < oldest_api_usage_time:
+                    oldest_api_usage_time = datetime.datetime.strptime(each['last_usage_time'], "%Y-%m-%d %H:%M:%S")
+                    oldest_api_key = each['api_key']
+                    oldest_api_secret = each['api_secret']
+            for each in file_data['key_pairs']:
+                if each['api_key'] == oldest_api_key:
+                    each['last_usage_time'] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            f.close()
+            f_w = open('api_key_secret_pairs.json', 'w')
+            json.dump(file_data, f_w, indent=2)
+
+            self.CID = oldest_api_key
+            self.CSCRT = oldest_api_secret
+            print(self.CID, self.CSCRT)
             self.access_token = ""
             self.token_type = ""
             self.expires_at = None
+            self.expire_flag = True
 
         def __str__(self):
             self.get_access_token()
@@ -49,18 +60,46 @@ class DataRetriever:
                 expires_in = response_data['expires_in']
 
                 self.expires_at = datetime.datetime.now() + datetime.timedelta(seconds=expires_in)
+                self.expire_flag = False
 
             return self.access_token
 
         def check_if_expired(self):
+            '''
             if self.expires_at is not None:
                 if self.expires_at > datetime.datetime.now():
                     return False
             return True
+            '''
+            return self.expire_flag
 
-    def pull_everything(self, page_num: int):
+        def set_expire(self):
+            self.expire_flag = True
+
+    class FileSaver:
+        def __init__(self):
+            self.current_path = os.path.dirname(__file__)
+
+            if not os.path.exists('/result'):
+                os.mkdir(os.path.join(self.current_path, "/result"))
+
+            result_relative_path = "result/" + datetime.datetime.now().strftime("%Y%m%d_%H%M%S") + "/"
+            self.abs_file_path = os.path.join(self.current_path, result_relative_path)
+            os.mkdir(self.abs_file_path)
+
+        def save(self, page_num: int, data):
+            file_name = "AllPet_" + str(page_num) + ".txt"
+            file_abs_path = os.path.join(self.abs_file_path, file_name)
+            f = open(file_abs_path, "a")
+            f.write(json.dumps(data, indent=2))
+            f.close()
+
+    def expire_access_token(self):
+        self.access_token = self.AccessToken()
+
+    def pull_a_page(self, page_num: int):
         headers = {
-            'Authorization': 'Bearer ' + self.access_token.get_access_token(),
+            'Authorization': 'Bearer ' + self.access_token.get_access_token()
         }
 
         params = (
@@ -71,21 +110,33 @@ class DataRetriever:
         response = requests.get('https://api.petfinder.com/v2/animals', headers=headers, params=params)
         response_data = response.json()
 
-        # if os.path.exists('/result')
-        current_path = os.path.dirname(__file__)
+        self.file_saver.save(page_num, response_data)
 
-        file_name = "AllPet_" + str(page_num) + ".txt"
-        file_abs_path = os.path.join(self.abs_file_path, file_name)
-        f = open(file_abs_path, "a")
-        f.write(json.dumps(response_data, indent=2))
-        f.close()
+    def pull_everything(self):
+        cnt = 1
+        while cnt < 1001:
+            data_retriever.pull_a_page(cnt)
+            print("Page Number: ", cnt)
+            cnt = cnt + 1
+        self.expire_access_token()
+        while cnt < 2001:
+            data_retriever.pull_a_page(cnt)
+            print("Page Number: ", cnt)
+            cnt = cnt + 1
+        self.expire_access_token()
+        while cnt < 2005:
+            data_retriever.pull_a_page(cnt)
+            print("Page Number: ", cnt)
+            cnt = cnt + 1
 
 
 data_retriever = DataRetriever()
+data_retriever.pull_everything()
 
-c = 1
-while c < 11:
-    data_retriever.pull_everything(c)
+'''
+c = 1001
+while c < 2002:
+    data_retriever.pull_a_page(c)
     print("Page Number: ", c)
     c = c + 1
-
+'''
