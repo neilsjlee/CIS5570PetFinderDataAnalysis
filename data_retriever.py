@@ -18,11 +18,11 @@ class DataRetriever:
 
             oldest_api_key = ""
             oldest_api_secret = ""
-            oldest_api_usage_time = datetime.datetime.strptime("2100-01-01 00:00:00", "%Y-%m-%d %H:%M:%S")
+            oldest_api_usage_time = datetime.datetime.strptime("3000-01-01 00:00:00", "%Y-%m-%d %H:%M:%S")
             for each in file_data['key_pairs']:
-                datetime.datetime.strptime(each['last_usage_time'], "%Y-%m-%d %H:%M:%S")
-                if datetime.datetime.strptime(each['last_usage_time'], "%Y-%m-%d %H:%M:%S") < oldest_api_usage_time:
-                    oldest_api_usage_time = datetime.datetime.strptime(each['last_usage_time'], "%Y-%m-%d %H:%M:%S")
+                this_key_last_usage_time = datetime.datetime.strptime(each['last_usage_time'], "%Y-%m-%d %H:%M:%S")
+                if this_key_last_usage_time < oldest_api_usage_time:
+                    oldest_api_usage_time = this_key_last_usage_time
                     oldest_api_key = each['api_key']
                     oldest_api_secret = each['api_secret']
             for each in file_data['key_pairs']:
@@ -31,6 +31,7 @@ class DataRetriever:
             f.close()
             f_w = open('api_key_secret_pairs.json', 'w')
             json.dump(file_data, f_w, indent=2)
+            f_w.close()
 
             self.CID = oldest_api_key
             self.CSCRT = oldest_api_secret
@@ -97,7 +98,7 @@ class DataRetriever:
     def expire_access_token(self):
         self.access_token = self.AccessToken()
 
-    def pull_a_page(self, page_num: int):
+    def pull_a_page(self, page_num: int) -> json:
         headers = {
             'Authorization': 'Bearer ' + self.access_token.get_access_token()
         }
@@ -110,28 +111,62 @@ class DataRetriever:
         response = requests.get('https://api.petfinder.com/v2/animals', headers=headers, params=params)
         response_data = response.json()
 
-        self.file_saver.save(page_num, response_data)
+        return response_data
 
     def pull_everything(self):
         cnt = 1
         while cnt < 1001:
-            data_retriever.pull_a_page(cnt)
+            result = data_retriever.pull_a_page(cnt)
+            self.file_saver.save(cnt, result)
             print("Page Number: ", cnt)
             cnt = cnt + 1
         self.expire_access_token()
         while cnt < 2001:
-            data_retriever.pull_a_page(cnt)
+            result = data_retriever.pull_a_page(cnt)
+            self.file_saver.save(cnt, result)
             print("Page Number: ", cnt)
             cnt = cnt + 1
         self.expire_access_token()
-        while cnt < 2005:
-            data_retriever.pull_a_page(cnt)
+        while cnt < 2100:
+            result = data_retriever.pull_a_page(cnt)
+            self.file_saver.save(cnt, result)
             print("Page Number: ", cnt)
             cnt = cnt + 1
 
+    def pull_everything_ver2(self):
+        page_num = 1
+        run_flag = 5
+        while run_flag > 0:
+            try:
+                result = data_retriever.pull_a_page(page_num)
+            except:
+                print("ERROR 01: UNABLE TO CONNECT")
+                run_flag = run_flag - 1
+            if "status" in result:
+                if result["status"] == 429:
+                    print("ERROR 02: Rate Limit Exceeded - Need another API Key")
+                    self.expire_access_token()
+                    run_flag = run_flag - 1
+                else:
+                    print("ERROR 03: Unknown Error")
+                    run_flag = run_flag - 1
+            else:
+                if "animals" in result:
+                    # pull success
+                    self.file_saver.save(page_num, result)
+                    if "next" in result['pagination']['_links']:
+                        page_num = page_num + 1
+                    else:
+                        run_flag = 0
+                else:
+                    print("ERROR 04: Received unexpected data.")
+                    print("Received Data: ", result)
+                    run_flag = run_flag - 1
+
 
 data_retriever = DataRetriever()
-data_retriever.pull_everything()
+# data_retriever.pull_everything()
+data_retriever.pull_everything_ver2()
 
 '''
 c = 1001
